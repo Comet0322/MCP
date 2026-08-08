@@ -60,8 +60,10 @@ async def _called_tool_names(
 
 @pytest.mark.parametrize("scenario", AGENT_SCENARIOS, ids=[s.prompt for s in AGENT_SCENARIOS])
 async def test_agent_selects_the_right_tool(client, scenario: AgentScenario):
-    api_key = settings.ANTHROPIC_API_KEY.get_secret_value() if settings.ANTHROPIC_API_KEY else None
-    anthropic_client = AsyncAnthropic(api_key=api_key)
+    if not settings.ANTHROPIC_API_KEY:
+        pytest.skip("ANTHROPIC_API_KEY not configured -- see .env.example")
+
+    anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY.get_secret_value())
     tool_specs = await _tool_specs(client)
 
     called = await _called_tool_names(anthropic_client, tool_specs, scenario.prompt)
