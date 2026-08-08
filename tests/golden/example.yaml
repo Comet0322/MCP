@@ -1,0 +1,51 @@
+# Example golden cases for the word_count example tool.
+# Fill in real cases for your own tools -- these are here to prove out the
+# six assert_type dispatch paths, not as a real regression suite.
+
+- description: word_count exact match
+  tool_name: word_count
+  input:
+    text: "hello world"
+  assert_type: exact_match
+  field: word_count
+  expected: 2
+
+- description: word_count contains requested_by
+  tool_name: word_count
+  input:
+    text: "one two three"
+  assert_type: contains
+  expected:
+    requested_by: local-dev
+
+- description: word_count requested_by matches expected tenant pattern
+  tool_name: word_count
+  input:
+    text: "a b"
+  assert_type: regex_match
+  field: requested_by
+  expected: "^local-dev$"
+
+- description: word_count numeric tolerance
+  tool_name: word_count
+  input:
+    text: "alpha beta gamma delta"
+  assert_type: numeric_tolerance
+  field: word_count
+  expected: 4
+  tolerance: 0
+
+- description: word_count is always positive for non-empty input
+  tool_name: word_count
+  input:
+    text: "just one"
+  assert_type: custom
+  field: word_count
+  custom_assertion: "tests.golden.custom_assertions:assert_positive_word_count"
+
+- description: word_count output is semantically a count-of-4 report (LLM judge)
+  tool_name: word_count
+  input:
+    text: "the quick brown fox"
+  assert_type: llm_judge
+  expected: "a report that the text has 4 words, along with the requester's tenant id"

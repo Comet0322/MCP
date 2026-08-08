@@ -1,0 +1,22 @@
+services:
+  mcp-server:
+    build: .
+    env_file: .env
+    ports:
+      - "${MCP_PORT:-8000}:8000"
+    extra_hosts:
+      # Lets the container reach services on the host via host.docker.internal
+      # on Linux too (Docker Desktop on macOS/Windows already provides this).
+      # Used by tests/server/test_container_smoke.py's mock JWKS server.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    # Only needed if you add a real file-operation tool -- example_tool.py
+    # is pure logic and doesn't touch the filesystem.
+    # volumes:
+    #   - /path/on/host:/data

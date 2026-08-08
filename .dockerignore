@@ -1,0 +1,15 @@
+.venv
+.git
+.github
+tests
+docs
+*.md
+__pycache__
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.env
+.env.*
+!.env.example
+prompt.md
+pyrightconfig.json
