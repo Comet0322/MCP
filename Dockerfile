@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN pip install --no-cache-dir uv
 
@@ -14,7 +14,7 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 RUN useradd --create-home --uid 1000 mcp
 WORKDIR /app
