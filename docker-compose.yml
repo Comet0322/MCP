@@ -4,11 +4,6 @@ services:
     env_file: .env
     ports:
       - "${MCP_PORT:-8000}:8000"
-    extra_hosts:
-      # Lets the container reach services on the host via host.docker.internal
-      # on Linux too (Docker Desktop on macOS/Windows already provides this).
-      # Used by tests/server/test_container_smoke.py's mock JWKS server.
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

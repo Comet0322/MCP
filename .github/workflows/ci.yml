@@ -17,7 +17,12 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --all-groups
+      # --no-group agent-sdk: that group pulls in the ~80MB claude-agent-sdk
+      # package for test_agent_e2e_multiturn.py, which needs the Claude Code
+      # CLI installed to do anything -- absent on this runner, so it always
+      # skips here. No point paying the download on every run for a test
+      # that can't execute.
+      - run: uv sync --all-groups --no-group agent-sdk
       # ruff's "S" ruleset (flake8-bandit) is enabled in pyproject.toml, so
       # this also covers basic Python SAST -- no separate step needed.
       - run: uv run ruff check .
@@ -47,7 +52,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
   slow:
-    name: slow (llm judge, container smoke, agent e2e)
+    name: slow (llm judge, container smoke, tool selection + quality)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +60,14 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --all-groups
+      # --no-group agent-sdk: that group pulls in the ~80MB claude-agent-sdk
+      # package for test_agent_e2e_multiturn.py, which needs the Claude Code
+      # CLI installed to do anything -- absent on this runner, so it always
+      # skips here. No point paying the download on every run for a test
+      # that can't execute.
+      - run: uv sync --all-groups --no-group agent-sdk
       - run: uv run pytest -m slow
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_JUDGE_BASE_URL: ${{ secrets.LLM_JUDGE_BASE_URL }}
+          LLM_JUDGE_API_KEY: ${{ secrets.LLM_JUDGE_API_KEY }}
+          LLM_JUDGE_MODEL: ${{ secrets.LLM_JUDGE_MODEL }}

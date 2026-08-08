@@ -2,12 +2,20 @@ import httpx
 from fastmcp import FastMCP
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from src.main.python.auth import get_current_identity
 from src.main.python.errors import raise_tool_error
 
 
 def register(mcp: FastMCP) -> None:
-    mcp.tool(fetch_json)
+    mcp.tool(
+        fetch_json,
+        annotations={
+            "title": "Fetch JSON",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
 
 
 # Contract: test_contract.py requires every tool to declare a known-invalid
@@ -50,8 +58,7 @@ async def fetch_json(url: str) -> dict:
             or https://.
 
     Returns:
-        A dict with `status_code` (int), `body` (the parsed JSON payload),
-        and `requested_by` (str, the caller's tenant id).
+        A dict with `status_code` (int) and `body` (the parsed JSON payload).
     """
     if not url.startswith(("http://", "https://")):
         raise_tool_error(
@@ -59,8 +66,6 @@ async def fetch_json(url: str) -> dict:
             "`url` must start with http:// or https://.",
             recoverable=False,
         )
-
-    identity = get_current_identity()
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -82,5 +87,4 @@ async def fetch_json(url: str) -> dict:
     return {
         "status_code": response.status_code,
         "body": response.json(),
-        "requested_by": identity.tenant_id,
     }

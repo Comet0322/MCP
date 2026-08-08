@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,15 +13,6 @@ class Settings(BaseSettings):
     ENV: Literal["dev", "prod"] = "dev"
     LOG_LEVEL: str = "INFO"
 
-    # --- auth (SSO / OIDC resource server, multi-tenant) ---
-    AUTH_ENABLED: bool = False
-    OIDC_ISSUER: str | None = None
-    JWKS_URL: str | None = None
-    AUDIENCE: str | None = None
-    # Claim to read the tenant/user id from. No universal default: every IdP
-    # names this differently (Azure AD uses "tid", others use custom claims).
-    TENANT_CLAIM_NAME: str | None = None
-
     # --- CORS ---
     # Comma-separated, e.g. "https://a.example.com,https://b.example.com".
     # Empty by default: MCP clients are CLI agents, not browsers. Only fill
@@ -33,19 +24,14 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
-    # --- agent e2e eval (tests/agent/) ---
-    # Deliberately fixed to Anthropic/Claude: this layer tests whether a
-    # Claude Code-like agent picks the right tool, so it should stay
-    # representative of that actual client, not be provider-agnostic.
-    ANTHROPIC_API_KEY: SecretStr | None = None
-    AGENT_EVAL_MODEL: str = "claude-sonnet-5"
-
-    # --- LLM judge (tests/golden/ assert_type: llm_judge) ---
+    # --- LLM judge (tests/golden/ assert_type: llm_judge) and tool selection
+    # eval (tests/agent/test_tool_selection.py) ---
     # Bring-your-own OpenAI-compatible provider: works with OpenAI itself,
-    # NVIDIA NIM, DeepSeek, Together, a local vLLM/Ollama, etc. This is a
-    # plain semantic-equivalence check, no provider-specific features
-    # needed, so no vendor is hardcoded. No universal default -- fill in
-    # for whichever provider you use, e.g.:
+    # NVIDIA NIM, DeepSeek, Together, a local vLLM/Ollama, etc. Both layers
+    # only need plain chat-completions + tool-calling, no provider-specific
+    # features, so no vendor is hardcoded and both share this one config.
+    # The model must support tool/function calling for tests/agent/ to work.
+    # No universal default -- fill in for whichever provider you use, e.g.:
     #   LLM_JUDGE_BASE_URL=https://integrate.api.nvidia.com/v1
     #   LLM_JUDGE_MODEL=meta/llama-3.1-8b-instruct
     LLM_JUDGE_BASE_URL: str | None = None
@@ -67,29 +53,6 @@ class Settings(BaseSettings):
     @property
     def langfuse_enabled(self) -> bool:
         return bool(self.LANGFUSE_PUBLIC_KEY and self.LANGFUSE_SECRET_KEY)
-
-    @model_validator(mode="after")
-    def _enforce_prod_auth(self) -> "Settings":
-        if self.ENV == "prod":
-            object.__setattr__(self, "AUTH_ENABLED", True)
-        if self.AUTH_ENABLED:
-            missing = [
-                name
-                for name, value in (
-                    ("OIDC_ISSUER", self.OIDC_ISSUER),
-                    ("JWKS_URL", self.JWKS_URL),
-                    ("AUDIENCE", self.AUDIENCE),
-                    ("TENANT_CLAIM_NAME", self.TENANT_CLAIM_NAME),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(
-                    "AUTH_ENABLED is on but missing required settings: "
-                    f"{', '.join(missing)}. Set these to your organization's "
-                    "OIDC provider values before starting in this mode."
-                )
-        return self
 
 
 settings = Settings()

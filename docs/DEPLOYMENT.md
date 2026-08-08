@@ -2,36 +2,32 @@
 
 ## Scope
 
-This is a **single-instance** deployment (`docker compose`, not k8s) that
-acts as a **multi-tenant SSO/OIDC resource server**: it verifies bearer
-tokens issued by your organization's existing identity provider. It does
-**not** implement login/authorization flows itself -- how a caller obtains
-a token in the first place is out of scope, by design (see below).
+This is a **single-instance** deployment (`docker compose`, not k8s). It
+ships with **no auth layer** -- every call is unauthenticated by default.
+That's deliberate: identity/tenancy requirements vary too much across
+organizations (which IdP, which claim carries the tenant id, whether you
+even have multiple tenants) to bake in a default that wouldn't just be
+ripped out. Add auth yourself if your deployment needs it (see below)
+rather than fighting a built-in scheme designed for a use case that isn't
+yours.
 
-## Connecting your SSO / OIDC provider
+## Adding auth, if you need it
 
-Set these in `.env` (see `.env.example`):
+FastMCP (the framework this template is built on) has this built in --
+this template just doesn't wire it up. Two starting points:
 
-| Variable            | What it is                                                        |
-|----------------------|--------------------------------------------------------------------|
-| `AUTH_ENABLED`       | `true` in production. `ENV=prod` forces this on regardless.        |
-| `OIDC_ISSUER`        | Your IdP's issuer URL (the `iss` claim it stamps on tokens).       |
-| `JWKS_URL`           | Your IdP's JWKS endpoint (public keys used to verify signatures).  |
-| `AUDIENCE`           | The `aud` value your IdP issues tokens for this server with.       |
-| `TENANT_CLAIM_NAME`  | Which JWT claim holds the tenant/user id. **IdP-specific** -- e.g. Azure AD uses `tid`. Check your provider's token format. |
+- **Resource server (verify tokens someone else issued)**: pass
+  `auth=JWTVerifier(jwks_uri=..., issuer=..., audience=...)` to
+  `FastMCP(...)` in `main.py` (`fastmcp.server.auth.providers.jwt`). Read
+  the validated identity inside a tool with `get_access_token()`
+  (`fastmcp.server.dependencies`) and its `.claims` dict -- whichever claim
+  your IdP uses for tenant/user id is IdP-specific (e.g. Azure AD uses
+  `tid`); there's no universal default.
+- **Interactive login (server drives the OAuth flow itself)**: look at
+  `OAuthProxy` (`fastmcp.server.auth`) if there's no other way for your
+  client to obtain a token in the first place.
 
-If `AUTH_ENABLED` is on and any of these is missing, the server refuses to
-start (fail-fast, not a silent unauthenticated fallback).
-
-## How clients get a token
-
-This template deliberately does **not** implement an interactive OAuth
-login flow (no `/authorize` redirect, no `OAuthProxy`). That's a
-full OAuth-client-level integration, and MCP client support for driving an
-arbitrary org's IdP through that flow varies. Instead, assume your
-organization already has a way to mint a token for a user (a company SSO
-CLI, a login portal, whatever you use for other internal tools) and that
-token gets passed to the MCP client as a bearer token, e.g.:
+Once wired up, an MCP client passes the token as a bearer header:
 
 ```json
 {
@@ -44,17 +40,8 @@ token gets passed to the MCP client as a bearer token, e.g.:
 }
 ```
 
-**Upgrade path**: if you later need the server itself to drive an
-interactive login redirect (no other way for the client to get a token),
-look at FastMCP's `OAuthProxy` (`fastmcp.server.auth`). Not implemented
-here on purpose -- see the reasoning above.
-
-## Data isolation
-
-The server exposes the caller's identity to tools via
-`get_current_identity()`, but does not enforce any isolation policy
-itself. Whether a tool scopes its data access by tenant/user is that
-tool's own logic -- see `docs/TOOL_GUIDELINES.md`.
+Whether/how a tool then scopes data access by whatever identity you
+extract is your tool's own logic -- see `docs/TOOL_GUIDELINES.md`.
 
 ## CORS
 
@@ -73,20 +60,12 @@ proxy layer too; it's not implemented in this template.
 ## Observability (Langfuse via OpenTelemetry, optional)
 
 Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (`LANGFUSE_BASE_URL` too
-if self-hosted, defaults to Langfuse Cloud) to enable tracing. Two things
-happen:
-
-1. FastMCP's own built-in OpenTelemetry instrumentation
-   (`fastmcp.server.telemetry`) starts exporting its per-call spans --
-   method name, tool/resource/prompt name, auth, session id, errors -- to
-   Langfuse's OTLP endpoint. This covers every call automatically, not
-   just the two tools shipped here, with no per-tool code required.
-2. A small `TenantTracingMiddleware` (`observability.py`) adds a second
-   span per tool call tagged with `tenant_id` (the claim FastMCP's generic
-   auth attributes don't carry). It shows up alongside FastMCP's native
-   span in Langfuse rather than nested under it -- empirically, middleware
-   runs outside the context where FastMCP's own span is current, so there
-   was no reliable way to tag that span directly.
+if self-hosted, defaults to Langfuse Cloud) to enable tracing.
+FastMCP's own built-in OpenTelemetry instrumentation
+(`fastmcp.server.telemetry`) starts exporting its per-call spans -- method
+name, tool/resource/prompt name, session id, errors -- to Langfuse's OTLP
+endpoint. This covers every call automatically, not just the two tools
+shipped here, with no per-tool code required.
 
 Unset by default: no tracer is configured, zero overhead.
 

@@ -11,10 +11,8 @@ from opentelemetry.metrics import Meter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import Status, StatusCode
 from prometheus_client import CollectorRegistry
 
-from src.main.python.auth import get_current_identity
 from src.main.python.config import Settings, settings
 
 
@@ -87,7 +85,8 @@ class ToolMetricsMiddleware(Middleware):
     """
 
     def __init__(self, meter: Meter | None = None) -> None:
-        # Injectable for tests, same reason as TenantTracingMiddleware.
+        # Injectable for tests, so they don't have to touch OTel's global
+        # meter provider (which can only be set once per process).
         meter = meter or metrics.get_meter("my-mcp-template.tools")
         self._calls = meter.create_counter(
             "mcp_tool_calls_total", description="Number of MCP tool calls."
@@ -113,42 +112,3 @@ class ToolMetricsMiddleware(Middleware):
             attributes = {"tool": tool_name, "status": status}
             self._calls.add(1, attributes)
             self._duration.record(time.perf_counter() - start, attributes)
-
-
-class TenantTracingMiddleware(Middleware):
-    """Wraps every tool call in its own span, tagged with the caller's tenant_id.
-
-    FastMCP's own OTel instrumentation (fastmcp.server.telemetry) already
-    creates a "tools/call" span per call, but empirically it's created
-    *inside* call_next(), in a context this middleware's on_call_tool can't
-    reach -- trace.get_current_span() before or after call_next() is not
-    that span (verified: neither is a valid/recording span at that point).
-    So rather than trying to tag a span we can't actually reach, this opens
-    its own span around call_next(). It shows up alongside FastMCP's native
-    span in Langfuse, not nested under it.
-    """
-
-    def __init__(self, tracer: trace.Tracer | None = None) -> None:
-        # Injectable for tests, so they don't have to touch OTel's global
-        # tracer provider (which can only be set once per process).
-        self._tracer = tracer or trace.get_tracer("my-mcp-template.tenant")
-
-    async def on_call_tool(
-        self,
-        context: MiddlewareContext[CallToolRequestParams],
-        call_next: CallNext[CallToolRequestParams, ToolResult],
-    ) -> ToolResult:
-        tool_name = context.message.name
-        try:
-            tenant_id = get_current_identity().tenant_id
-        except Exception:
-            tenant_id = "unknown"
-
-        with self._tracer.start_as_current_span(
-            f"tenant.{tool_name}", attributes={"tenant_id": tenant_id}
-        ) as span:
-            try:
-                return await call_next(context)
-            except Exception as exc:
-                span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise

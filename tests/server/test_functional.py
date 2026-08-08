@@ -3,8 +3,9 @@
 Loads tests/golden/*.yaml and dispatches each case by assert_type. Six
 assert_types: exact_match/contains/regex_match/numeric_tolerance are plain
 comparisons against the tool's own output (unit-ish, no external calls).
-llm_judge calls the Anthropic API (see config.LLM_JUDGE_MODEL) and is
-marked slow. custom loads a user-provided validator via importlib.
+llm_judge calls your configured OpenAI-compatible provider (see
+config.LLM_JUDGE_*) and is marked slow. custom loads a user-provided
+validator via importlib.
 """
 
 import importlib

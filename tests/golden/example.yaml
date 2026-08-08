@@ -10,21 +10,21 @@
   field: word_count
   expected: 2
 
-- description: word_count contains requested_by
+- description: word_count result contains the word_count key
   tool_name: word_count
   input:
     text: "one two three"
   assert_type: contains
   expected:
-    requested_by: local-dev
+    word_count: 3
 
-- description: word_count requested_by matches expected tenant pattern
+- description: word_count field matches a numeric pattern
   tool_name: word_count
   input:
     text: "a b"
   assert_type: regex_match
-  field: requested_by
-  expected: "^local-dev$"
+  field: word_count
+  expected: "^2$"
 
 - description: word_count numeric tolerance
   tool_name: word_count
@@ -48,4 +48,4 @@
   input:
     text: "the quick brown fox"
   assert_type: llm_judge
-  expected: "a report that the text has 4 words, along with the requester's tenant id"
+  expected: "a report that the text has 4 words"

@@ -3,10 +3,6 @@
 Unit tests for observability.py:
 - _otlp_exporter_kwargs / configure_langfuse_tracing: pure config-building
   and the disabled/opt-out path (no OTel global state touched).
-- TenantTracingMiddleware: verified against a real OTel SDK TracerProvider
-  + InMemorySpanExporter injected directly into the middleware, so the
-  test doesn't need to touch OTel's *global* tracer provider (which can
-  only be set once per process).
 - ToolMetricsMiddleware / configure_prometheus_metrics: verified against a
   real OTel SDK MeterProvider + InMemoryMetricReader, same injection
   pattern, plus one end-to-end check that the Prometheus exposition output
@@ -17,14 +13,10 @@ from fastmcp import Client, FastMCP
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from prometheus_client import CollectorRegistry, generate_latest
 
 from src.main.python.config import Settings
 from src.main.python.observability import (
-    TenantTracingMiddleware,
     ToolMetricsMiddleware,
     _otlp_exporter_kwargs,
     configure_langfuse_tracing,
@@ -33,12 +25,24 @@ from src.main.python.observability import (
 
 
 def test_configure_langfuse_tracing_is_none_when_disabled():
-    cfg = Settings(LANGFUSE_PUBLIC_KEY=None, LANGFUSE_SECRET_KEY=None)
+    # _env_file=None: don't let a developer's real .env (e.g. a
+    # non-default LANGFUSE_BASE_URL) leak into what's meant to be an
+    # isolated, explicit-values-only Settings instance.
+    cfg = Settings(_env_file=None, LANGFUSE_PUBLIC_KEY=None, LANGFUSE_SECRET_KEY=None)
     assert configure_langfuse_tracing(cfg) is None
 
 
-def test_otlp_exporter_kwargs_point_at_langfuse_cloud_by_default():
-    cfg = Settings(LANGFUSE_PUBLIC_KEY="pk-lf-test", LANGFUSE_SECRET_KEY="sk-lf-test")
+def test_otlp_exporter_kwargs_point_at_langfuse_cloud_by_default(monkeypatch):
+    # deepeval's pytest plugin autoloads .env into the real process
+    # os.environ (not just its own settings -- see deepeval.config.settings
+    # reset_settings(reload_dotenv=True)), so _env_file=None alone can't
+    # isolate this: it only stops re-reading the .env *file*, and by the
+    # time this test runs LANGFUSE_BASE_URL is already a real env var.
+    # delenv it explicitly so the real code default is what's under test.
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
+    cfg = Settings(
+        _env_file=None, LANGFUSE_PUBLIC_KEY="pk-lf-test", LANGFUSE_SECRET_KEY="sk-lf-test"
+    )
     kwargs = _otlp_exporter_kwargs(cfg)
 
     assert kwargs["endpoint"] == "https://cloud.langfuse.com/api/public/otel/v1/traces"
@@ -48,64 +52,13 @@ def test_otlp_exporter_kwargs_point_at_langfuse_cloud_by_default():
 
 def test_otlp_exporter_kwargs_respect_custom_base_url():
     cfg = Settings(
+        _env_file=None,
         LANGFUSE_PUBLIC_KEY="pk-lf-test",
         LANGFUSE_SECRET_KEY="sk-lf-test",
         LANGFUSE_BASE_URL="https://langfuse.internal.example.com/",
     )
     kwargs = _otlp_exporter_kwargs(cfg)
     assert kwargs["endpoint"] == "https://langfuse.internal.example.com/api/public/otel/v1/traces"
-
-
-def _make_traced_server(tracer) -> tuple[FastMCP, InMemorySpanExporter]:
-    mcp = FastMCP("tenant-tracing-test-server")
-    mcp.add_middleware(TenantTracingMiddleware(tracer=tracer))
-
-    @mcp.tool
-    def ok_tool() -> str:
-        """Trivial tool that always succeeds."""
-        return "pong"
-
-    @mcp.tool
-    def boom_tool() -> str:
-        """Trivial tool that always raises."""
-        raise RuntimeError("boom")
-
-    return mcp
-
-
-async def test_successful_call_produces_a_span_tagged_with_tenant_id():
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    tracer = provider.get_tracer("test")
-
-    mcp = _make_traced_server(tracer)
-    async with Client(mcp) as client:
-        await client.call_tool("ok_tool", {})
-
-    spans = exporter.get_finished_spans()
-    tool_span = next(s for s in spans if s.name == "tenant.ok_tool")
-    assert tool_span.attributes is not None
-    assert tool_span.attributes["tenant_id"] == "local-dev"
-    assert tool_span.status.is_ok
-
-
-async def test_failed_call_marks_span_as_error_and_still_raises():
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    tracer = provider.get_tracer("test")
-
-    mcp = _make_traced_server(tracer)
-    async with Client(mcp) as client:
-        try:
-            await client.call_tool("boom_tool", {})
-        except Exception:
-            pass
-
-    spans = exporter.get_finished_spans()
-    tool_span = next(s for s in spans if s.name == "tenant.boom_tool")
-    assert not tool_span.status.is_ok
 
 
 def _make_metered_server(meter) -> FastMCP:

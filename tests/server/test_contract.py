@@ -10,48 +10,38 @@ from fastmcp.exceptions import ToolError
 
 from src.main.python.errors import ToolErrorPayload
 from src.main.python.tools import contract_invalid_cases
+from tests.server.contract_checks import (
+    check_declares_contract_case,
+    check_description_substantial,
+    check_param_descriptions,
+    check_valid_schema,
+)
 
 
 async def test_every_tool_has_a_valid_schema(client):
     tools = await client.list_tools()
     assert tools, "no tools registered"
     for tool in tools:
-        schema = tool.inputSchema
-        assert isinstance(schema, dict)
-        assert schema.get("type") == "object"
-        properties = schema.get("properties", {})
-        assert isinstance(properties, dict)
-        for required_name in schema.get("required", []):
-            assert required_name in properties, (
-                f"{tool.name}: required field '{required_name}' is not declared in properties"
-            )
+        check_valid_schema(tool)
 
 
 async def test_every_tool_description_is_substantial(client):
     tools = await client.list_tools()
     for tool in tools:
-        assert tool.description, f"{tool.name} has no description"
-        assert len(tool.description) >= 20, (
-            f"{tool.name} description is only {len(tool.description)} chars, need >= 20"
-        )
+        check_description_substantial(tool)
 
 
 async def test_every_tool_parameter_has_a_description(client):
     tools = await client.list_tools()
     for tool in tools:
-        properties = tool.inputSchema.get("properties", {})
-        for param_name, param_schema in properties.items():
-            assert param_schema.get("description"), f"{tool.name}.{param_name} has no description"
+        check_param_descriptions(tool)
 
 
 async def test_every_tool_declares_a_contract_invalid_case(client):
     tools = await client.list_tools()
     cases = contract_invalid_cases()
-    missing = [tool.name for tool in tools if tool.name not in cases]
-    assert not missing, (
-        f"tools missing a CONTRACT_INVALID_CASE declaration: {missing}. "
-        "See docs/TOOL_GUIDELINES.md."
-    )
+    for tool in tools:
+        check_declares_contract_case(tool.name, cases)
 
 
 @pytest.mark.parametrize("tool_name,invalid_args", list(contract_invalid_cases().items()))

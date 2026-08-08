@@ -1,11 +1,19 @@
 from fastmcp import FastMCP
 
-from src.main.python.auth import get_current_identity
 from src.main.python.errors import raise_tool_error
 
 
 def register(mcp: FastMCP) -> None:
-    mcp.tool(word_count)
+    mcp.tool(
+        word_count,
+        annotations={
+            "title": "Count Words",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )
 
 
 # Contract: test_contract.py requires every tool to declare a known-invalid
@@ -15,11 +23,10 @@ CONTRACT_INVALID_CASE = {"text": "   "}
 
 
 async def word_count(text: str) -> dict:
-    """Count the words in a piece of text and report who asked.
+    """Count the words in a piece of text.
 
     This is a pure-logic example: it demonstrates the unified ToolError
-    format (triggered on empty input) and how to read the caller's
-    identity via get_current_identity(). It does not read or write any
+    format (triggered on empty input). It does not read or write any
     files -- see docs/TOOL_GUIDELINES.md if your tool needs to.
 
     Args:
@@ -27,8 +34,7 @@ async def word_count(text: str) -> dict:
             non-whitespace character.
 
     Returns:
-        A dict with `word_count` (int, number of whitespace-separated
-        words) and `requested_by` (str, the caller's tenant id).
+        A dict with `word_count` (int, number of whitespace-separated words).
     """
     stripped = text.strip()
     if not stripped:
@@ -38,5 +44,4 @@ async def word_count(text: str) -> dict:
             recoverable=False,
         )
 
-    identity = get_current_identity()
-    return {"word_count": len(stripped.split()), "requested_by": identity.tenant_id}
+    return {"word_count": len(stripped.split())}

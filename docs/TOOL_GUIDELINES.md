@@ -22,14 +22,14 @@ error message when deciding whether to retry. Write for that reader.
 
 ```python
 async def word_count(text: str) -> dict:
-    """Count the words in a piece of text and report who asked.
+    """Count the words in a piece of text.
 
     Args:
         text: The text to count words in. Must contain at least one
             non-whitespace character.
 
     Returns:
-        A dict with `word_count` (int) and `requested_by` (str).
+        A dict with `word_count` (int).
     """
 ```
 
@@ -49,6 +49,75 @@ Why this fails: `wc`/`t` give the agent nothing to reason about naming-wise;
 inputs, or constraints; there's no `Args:` entry, so `t` ships with no
 parameter description at all -- `test_contract.py` would reject this.
 
+## Tool annotations
+
+Every tool's `register()` call must pass `annotations=` with all four MCP
+hints -- clients use these for UI treatment and safety gating (e.g. asking
+for confirmation before a destructive call). See `example_tool.py` /
+`fetch_json_tool.py` for the pattern:
+
+```python
+mcp.tool(
+    my_tool,
+    annotations={
+        "title": "Human-Readable Title",
+        "readOnlyHint": True,  # doesn't modify anything
+        "destructiveHint": False,  # doesn't destroy/overwrite data
+        "idempotentHint": True,  # repeat calls, same args -> no extra effect
+        "openWorldHint": False,  # doesn't talk to an external system
+    },
+)
+```
+
+These are hints, not enforcement -- don't rely on them for actual security
+decisions, just accurate disclosure.
+
+## Naming, once you replace the example tools
+
+`word_count`/`fetch_json` have no prefix because this template doesn't know
+what service you're wrapping yet. Once you add real tools, prefix with your
+service name (`slack_send_message`, not `send_message`) -- an MCP client
+often has multiple servers loaded at once, and an unprefixed name collides
+easily.
+
+## Response format and pagination, for data-heavy tools
+
+Both example tools return a single small dict -- no formatting choice, no
+pagination needed. If your tool lists/searches real data (the DB-query
+class of tool this template doesn't demonstrate yet -- see `docs/STATUS.md`),
+budget for:
+- A `response_format` param (`"json"` for programmatic use, `"markdown"`
+  default for a human-readable summary) rather than one fixed shape.
+- `limit`/`offset` (or cursor) params, and return `has_more`/`next_offset`/
+  `total_count` alongside the page -- never load an unbounded result set
+  into the tool response.
+
+## Evaluating tool quality once you have real data
+
+Once your tools front real data (not this template's two toy examples),
+`test_tool_selection.py`'s single-scenario tool-selection check stops being
+enough signal. Two things to reach for, in order:
+
+- **`test_tool_selection_quality.py`** -- same idea, but scored with a real
+  LLM judge (`ToolCorrectnessMetric` + `available_tools=`) instead of a
+  deterministic set comparison, so it can tell "technically valid but not
+  the best choice" apart from "wrong". Worth it once you have tools with
+  overlapping purposes (two search variants, a "quick" vs "detailed"
+  operation) -- this repo's two example tools don't need it yet.
+- **The `mcp-builder` skill's evaluation methodology** -- write ~10
+  realistic, multi-hop, read-only questions with a single verifiable
+  answer, solve them yourself first, then run an agent against only your
+  MCP server. A stronger, broader test of whether your tool
+  descriptions/schemas hold up under real use than either check above.
+  Worth reaching for once you have enough real data to write hard
+  questions against, not before.
+
+For an actual multi-turn agent loop (not single-shot tool selection),
+`test_agent_e2e_multiturn.py` is a working template: `claude-agent-sdk`
+(`agent-sdk` dependency group) driving this repo's real MCP server over
+HTTP. Needs the Claude Code CLI installed, and is Claude-only by
+construction -- see `docs/TESTING.md`.
+
 ## Error messages
 
 Every tool-level failure must go through `errors.py`'s `raise_tool_error`,
@@ -61,8 +130,8 @@ never a bare `raise` or an unhandled exception. The unified shape:
 - `recoverable=True` means retrying the same call, possibly with backoff,
   could plausibly succeed (a transient upstream timeout, a rate limit).
 - `recoverable=False` means the agent needs to change something first --
-  fix the input, get a fresh token, wait for a resource to exist. Retrying
-  verbatim will just fail again.
+  fix the input, wait for a resource to exist. Retrying verbatim will just
+  fail again.
 - `message` should say what to do differently, not just what went wrong.
   "`text` must be non-empty" is more useful than "ValidationError".
 - Every tool must declare a `CONTRACT_INVALID_CASE` (see `example_tool.py`)
@@ -82,14 +151,15 @@ Whichever bucket a failure ends up in should also match its
 
 - Use the same name for the same concept across every tool in this server
   (e.g. always `text`, never `text` in one tool and `content` in another).
-- Prefer explicit names over abbreviations (`tenant_id`, not `tid`) --
-  the agent reasons over the schema, it doesn't know your internal jargon.
+- Prefer explicit names over abbreviations (`user_id`, not `uid`) -- the
+  agent reasons over the schema, it doesn't know your internal jargon.
 - Booleans read as questions: `include_archived`, not `archived_flag`.
 
-## Identity and data scoping
+## Identity and auth
 
-Call `get_current_identity()` (from `auth.py`) if your tool needs to know
-who's calling. This template guarantees the identity is available; it does
-**not** decide whether your tool should use it to scope data access. If
-your tool reads/writes tenant-specific data, that scoping is your call to
-make and test -- see `example_tool.py` for how to retrieve the identity.
+This template ships with no auth layer -- see `docs/DEPLOYMENT.md` for how
+to add one. If your deployment needs to know who's calling (e.g. to scope
+data access per tenant/user), that's on you to wire up and is a decision
+FastMCP supports natively (`auth=` on `FastMCP(...)` in `main.py`,
+`get_access_token()` inside a tool via `fastmcp.server.dependencies`) --
+this template just doesn't make that choice for you.

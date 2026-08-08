@@ -9,10 +9,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
-from src.main.python.auth import build_auth_provider
 from src.main.python.config import settings
 from src.main.python.observability import (
-    TenantTracingMiddleware,
     ToolMetricsMiddleware,
     configure_langfuse_tracing,
     configure_prometheus_metrics,
@@ -54,10 +52,8 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
             _tracer_provider.shutdown()  # flushes buffered spans, then stops the exporter
 
 
-mcp = FastMCP(name="my-mcp-template", auth=build_auth_provider(), lifespan=lifespan)
+mcp = FastMCP(name="my-mcp-template", lifespan=lifespan)
 mcp.add_middleware(ToolMetricsMiddleware())
-if _tracer_provider is not None:
-    mcp.add_middleware(TenantTracingMiddleware())
 register_all(mcp)
 
 
@@ -77,7 +73,6 @@ def main() -> None:
         host=settings.HOST,
         port=settings.PORT,
         env=settings.ENV,
-        auth_enabled=settings.AUTH_ENABLED,
         langfuse_enabled=settings.langfuse_enabled,
     )
     mcp.run(
