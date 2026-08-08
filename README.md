@@ -59,6 +59,17 @@ uv run pytest -m slow          # slow: calls Anthropic + docker compose. Run on 
 uv run pytest                  # everything
 ```
 
+### Security scanning (CI, part of the fast job)
+
+- **`ruff check .`** includes the `S` (flake8-bandit) ruleset -- basic
+  Python SAST, e.g. hardcoded credentials, insecure defaults.
+- **`pip-audit`** -- known CVEs in resolved Python dependencies.
+- **Trivy** -- scans the built container image (OS packages + Python deps
+  baked into it) and uploads results to the repo's Security tab. Report-only
+  (doesn't fail the build): base-image OS CVEs with no fix published yet
+  are common and not actionable, and failing on those would make this
+  template permanently red for no fixable reason.
+
 `ANTHROPIC_API_KEY` is required for `tests/agent/` (fixed to Claude on
 purpose -- see below). `LLM_JUDGE_BASE_URL`/`LLM_JUDGE_API_KEY`/`LLM_JUDGE_MODEL`
 are required for `llm_judge` golden cases -- bring your own OpenAI-compatible

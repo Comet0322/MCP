@@ -118,7 +118,7 @@ async def test_metrics_endpoint_reflects_the_call_above(running_container):
     # and reflects real tool-call traffic, not just that it returns 200.
     response = httpx.get(f"{BASE_URL}/metrics")
     assert response.status_code == 200
-    assert 'mcp_tool_calls_total{' in response.text
+    assert "mcp_tool_calls_total{" in response.text
     assert 'tool="word_count"' in response.text
 
 

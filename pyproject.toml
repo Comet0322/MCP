@@ -19,6 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "inline-snapshot>=0.35.3",
+    "pip-audit>=2.10.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pyyaml>=6.0.3",
@@ -46,4 +47,11 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "S"]  # S = flake8-bandit (security)
+
+[tool.ruff.lint.per-file-ignores]
+# Bandit-class findings in test code are essentially never real security
+# issues here: assert is the normal pytest idiom, fixture strings like
+# "sk-lf-test" are fake credentials, and try/except/pass is sometimes used
+# deliberately to check a side effect after an expected failure.
+"tests/**" = ["S"]

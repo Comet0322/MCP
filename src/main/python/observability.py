@@ -25,7 +25,7 @@ def _otlp_exporter_kwargs(cfg: Settings) -> dict:
     construction is testable without touching OTel's global tracer provider
     (which, by API design, can only be set once per process).
     """
-    assert cfg.LANGFUSE_PUBLIC_KEY is not None and cfg.LANGFUSE_SECRET_KEY is not None
+    assert cfg.LANGFUSE_PUBLIC_KEY is not None and cfg.LANGFUSE_SECRET_KEY is not None  # noqa: S101 -- type narrowing, checked by caller via cfg.langfuse_enabled
     credentials = f"{cfg.LANGFUSE_PUBLIC_KEY}:{cfg.LANGFUSE_SECRET_KEY.get_secret_value()}"
     auth_header = base64.b64encode(credentials.encode()).decode()
     return {

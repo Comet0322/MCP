@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- server ---
-    HOST: str = "0.0.0.0"
+    HOST: str = "0.0.0.0"  # noqa: S104 -- must bind all interfaces to be reachable from outside the container
     PORT: int = 8000
     ENV: Literal["dev", "prod"] = "dev"
     LOG_LEVEL: str = "INFO"

@@ -45,7 +45,7 @@ def get_current_identity(cfg: Settings = settings) -> Identity:
             recoverable=False,
         )
 
-    assert cfg.TENANT_CLAIM_NAME is not None  # enforced by Settings validator when AUTH_ENABLED
+    assert cfg.TENANT_CLAIM_NAME is not None  # noqa: S101 -- type narrowing, enforced by Settings validator when AUTH_ENABLED
     tenant_id = token.claims.get(cfg.TENANT_CLAIM_NAME)
     if not tenant_id:
         raise_tool_error(

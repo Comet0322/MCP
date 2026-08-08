@@ -7,18 +7,44 @@ on:
 
 jobs:
   fast:
-    name: fast (contract, functional, auth)
+    name: fast (contract, functional, auth, security scans)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # to upload the Trivy SARIF report
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
       - run: uv sync --all-groups
+      # ruff's "S" ruleset (flake8-bandit) is enabled in pyproject.toml, so
+      # this also covers basic Python SAST -- no separate step needed.
       - run: uv run ruff check .
+      - name: pip-audit (known CVEs in Python dependencies)
+        run: uv run pip-audit
       - run: uv run pytest -m "not slow"
       - name: docker build (build-only, no run)
         run: docker build -t my-mcp-template:ci .
+      - name: Trivy (container image CVE scan)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: my-mcp-template:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          # Report-only, doesn't fail the build: base-image OS CVEs with no
+          # fixed version available yet are common and not actionable here
+          # (verified: python:3.13-slim currently has ~20 such findings,
+          # all upstream-unfixed). Failing on those would make this
+          # template permanently red for no fixable reason. Results still
+          # show up in the repo's Security tab either way.
+          exit-code: "0"
+      - name: Upload Trivy results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
 
   slow:
     name: slow (llm judge, container smoke, agent e2e)
