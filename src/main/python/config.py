@@ -53,6 +53,21 @@ class Settings(BaseSettings):
     LLM_JUDGE_MODEL: str | None = None
     LLM_JUDGE_THRESHOLD: float = 0.7  # TODO: tune per case
 
+    # --- observability (Langfuse via OpenTelemetry, optional) ---
+    # Opt-in, like LLM_JUDGE_*: unset by default, no tracer configured, zero
+    # overhead. FastMCP has native OTel instrumentation (fastmcp.server.telemetry)
+    # that emits a span for every tool/resource/prompt call automatically --
+    # see observability.py, which just points a standard OTel SDK at
+    # Langfuse's OTLP endpoint. LANGFUSE_BASE_URL defaults to Langfuse Cloud;
+    # override for a self-hosted instance.
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: SecretStr | None = None
+    LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(self.LANGFUSE_PUBLIC_KEY and self.LANGFUSE_SECRET_KEY)
+
     @model_validator(mode="after")
     def _enforce_prod_auth(self) -> "Settings":
         if self.ENV == "prod":

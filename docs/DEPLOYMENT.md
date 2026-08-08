@@ -70,6 +70,26 @@ termination in production -- the container itself only speaks plain HTTP
 on the internal network. Rate limiting, if you need it, belongs at the
 proxy layer too; it's not implemented in this template.
 
+## Observability (Langfuse via OpenTelemetry, optional)
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (`LANGFUSE_BASE_URL` too
+if self-hosted, defaults to Langfuse Cloud) to enable tracing. Two things
+happen:
+
+1. FastMCP's own built-in OpenTelemetry instrumentation
+   (`fastmcp.server.telemetry`) starts exporting its per-call spans --
+   method name, tool/resource/prompt name, auth, session id, errors -- to
+   Langfuse's OTLP endpoint. This covers every call automatically, not
+   just the two tools shipped here, with no per-tool code required.
+2. A small `TenantTracingMiddleware` (`observability.py`) adds a second
+   span per tool call tagged with `tenant_id` (the claim FastMCP's generic
+   auth attributes don't carry). It shows up alongside FastMCP's native
+   span in Langfuse rather than nested under it -- empirically, middleware
+   runs outside the context where FastMCP's own span is current, so there
+   was no reliable way to tag that span directly.
+
+Unset by default: no tracer is configured, zero overhead.
+
 ## Volume mounts
 
 `example_tool.py` is pure logic and touches no files, so

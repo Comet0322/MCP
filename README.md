@@ -3,9 +3,9 @@
 A generic template for building [FastMCP](https://gofastmcp.com) servers
 for CLI coding agents (Claude Code and similar) -- not chat UIs. It ships
 with two working example tools (pure logic, and an external-call tool with
-tenacity retries), a unified error format, SSO/OIDC auth, Docker Compose
-deployment, and a two-axis test suite. Not RAG-specific: just as suited to
-DB-query or file-operation tools.
+tenacity retries), a unified error format, SSO/OIDC auth, optional Langfuse
+tool-call tracing, Docker Compose deployment, and a two-axis test suite.
+Not RAG-specific: just as suited to DB-query or file-operation tools.
 
 ## Using this as a template
 
@@ -119,6 +119,8 @@ docs/                  TOOL_GUIDELINES.md, DEPLOYMENT.md
   you use the `llm_judge` assert_type in a golden case -- no universal
   default, bring your own OpenAI-compatible provider. Cases skip (not fail)
   if unset.
+- `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`, only
+  if you want tool-call tracing. Unset = no middleware added.
 
 **Already have a reasonable default -- tune if needed:**
 - `LLM_JUDGE_THRESHOLD` in `config.py`.
