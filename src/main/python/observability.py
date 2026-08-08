@@ -1,13 +1,18 @@
 import base64
+import time
 
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 from mcp.types import CallToolRequestParams
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.metrics import Meter
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
+from prometheus_client import CollectorRegistry
 
 from src.main.python.auth import get_current_identity
 from src.main.python.config import Settings, settings
@@ -50,6 +55,64 @@ def configure_langfuse_tracing(cfg: Settings = settings) -> TracerProvider | Non
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     return provider
+
+
+def configure_prometheus_metrics(registry: CollectorRegistry | None = None) -> CollectorRegistry:
+    """Wires per-tool-call metrics to a Prometheus-format /metrics endpoint.
+
+    Always on, unlike Langfuse tracing: this is pull-based (nothing is sent
+    anywhere unless something scrapes /metrics), needs no external
+    credentials, and costs nothing if unscraped -- there's no "opt in to
+    what" the way there is for a real external provider.
+
+    Instrumentation uses the OTel Metrics API (same paradigm as tracing),
+    so it stays vendor-neutral even though the exposed wire format is
+    Prometheus text exposition -- which most modern backends (Datadog
+    Agent, Grafana Agent, VictoriaMetrics, ...) can also scrape directly,
+    not just Prometheus itself. No infra choice is baked in here.
+    """
+    registry = registry or CollectorRegistry()
+    reader = PrometheusMetricReader(registry=registry)
+    provider = MeterProvider(metric_readers=[reader])
+    metrics.set_meter_provider(provider)
+    return registry
+
+
+class ToolMetricsMiddleware(Middleware):
+    """Records a call counter and a duration histogram for every tool call.
+
+    Labeled by tool name and status (ok/error) -- enough to build request
+    rate, error rate, and latency panels/alerts in whatever you point at
+    /metrics, without committing this template to a specific backend.
+    """
+
+    def __init__(self, meter: Meter | None = None) -> None:
+        # Injectable for tests, same reason as TenantTracingMiddleware.
+        meter = meter or metrics.get_meter("my-mcp-template.tools")
+        self._calls = meter.create_counter(
+            "mcp_tool_calls_total", description="Number of MCP tool calls."
+        )
+        self._duration = meter.create_histogram(
+            "mcp_tool_call_duration_seconds", unit="s", description="MCP tool call duration."
+        )
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[CallToolRequestParams],
+        call_next: CallNext[CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        tool_name = context.message.name
+        start = time.perf_counter()
+        status = "ok"
+        try:
+            return await call_next(context)
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            attributes = {"tool": tool_name, "status": status}
+            self._calls.add(1, attributes)
+            self._duration.record(time.perf_counter() - start, attributes)
 
 
 class TenantTracingMiddleware(Middleware):

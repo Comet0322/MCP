@@ -90,6 +90,20 @@ happen:
 
 Unset by default: no tracer is configured, zero overhead.
 
+## Metrics (Prometheus exposition, always on)
+
+`GET /metrics` exposes `mcp_tool_calls_total` (counter, labeled by `tool`
+and `status`: ok/error) and `mcp_tool_call_duration_seconds` (histogram,
+same labels) via `ToolMetricsMiddleware`. Unlike Langfuse this needs no
+external credentials and isn't opt-in -- it's pull-based, costs nothing
+unless something scrapes it, and doesn't commit this template to any
+specific backend. Point Prometheus, a Grafana Agent, the Datadog Agent's
+Prometheus check, or anything else that scrapes Prometheus-format
+endpoints at it. If you're running under Kubernetes with the Prometheus
+Operator, this is what a `ServiceMonitor` would target -- that resource
+itself lives in your cluster manifests, not this repo (see "Scope" above:
+single-instance/docker-compose only, no k8s manifests here).
+
 ## Volume mounts
 
 `example_tool.py` is pure logic and touches no files, so

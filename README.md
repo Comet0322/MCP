@@ -3,9 +3,10 @@
 A generic template for building [FastMCP](https://gofastmcp.com) servers
 for CLI coding agents (Claude Code and similar) -- not chat UIs. It ships
 with two working example tools (pure logic, and an external-call tool with
-tenacity retries), a unified error format, SSO/OIDC auth, optional Langfuse
-tool-call tracing, Docker Compose deployment, and a two-axis test suite.
-Not RAG-specific: just as suited to DB-query or file-operation tools.
+tenacity retries), a unified error format, SSO/OIDC auth, a Prometheus
+`/metrics` endpoint, optional Langfuse tool-call tracing, Docker Compose
+deployment, and a two-axis test suite. Not RAG-specific: just as suited to
+DB-query or file-operation tools.
 
 ## Using this as a template
 

@@ -5,12 +5,18 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastmcp import FastMCP
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, Response
 
 from src.main.python.auth import build_auth_provider
 from src.main.python.config import settings
-from src.main.python.observability import TenantTracingMiddleware, configure_langfuse_tracing
+from src.main.python.observability import (
+    TenantTracingMiddleware,
+    ToolMetricsMiddleware,
+    configure_langfuse_tracing,
+    configure_prometheus_metrics,
+)
 from src.main.python.tools import register_all
 
 
@@ -36,6 +42,7 @@ configure_logging()
 log = structlog.get_logger()
 
 _tracer_provider = configure_langfuse_tracing()
+_metrics_registry = configure_prometheus_metrics()
 
 
 @asynccontextmanager
@@ -48,6 +55,7 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[None]:
 
 
 mcp = FastMCP(name="my-mcp-template", auth=build_auth_provider(), lifespan=lifespan)
+mcp.add_middleware(ToolMetricsMiddleware())
 if _tracer_provider is not None:
     mcp.add_middleware(TenantTracingMiddleware())
 register_all(mcp)
@@ -56,6 +64,11 @@ register_all(mcp)
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_request: Request) -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+@mcp.custom_route("/metrics", methods=["GET"])
+async def metrics_endpoint(_request: Request) -> Response:
+    return Response(generate_latest(_metrics_registry), media_type=CONTENT_TYPE_LATEST)
 
 
 def main() -> None:

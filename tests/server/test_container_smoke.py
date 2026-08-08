@@ -112,6 +112,16 @@ async def test_list_tools_and_call_example_tool_over_streamable_http(running_con
         assert result.data["word_count"] == 3
 
 
+async def test_metrics_endpoint_reflects_the_call_above(running_container):
+    # Runs after test_list_tools_and_call_example_tool_over_streamable_http
+    # in the same module-scoped container -- confirms /metrics is reachable
+    # and reflects real tool-call traffic, not just that it returns 200.
+    response = httpx.get(f"{BASE_URL}/metrics")
+    assert response.status_code == 200
+    assert 'mcp_tool_calls_total{' in response.text
+    assert 'tool="word_count"' in response.text
+
+
 async def test_call_without_token_is_rejected(running_container):
     transport = StreamableHttpTransport(url=MCP_URL)
     with pytest.raises(Exception):  # noqa: B017 -- exact type is transport-level (httpx/mcp), just needs to fail
